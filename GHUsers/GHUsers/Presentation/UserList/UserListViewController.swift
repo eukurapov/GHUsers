@@ -1,7 +1,7 @@
 import Combine
 import UIKit
 
-class UserListViewController: UITableViewController {
+class UserListViewController: UICollectionViewController {
 
     // MARK: - Properties
 
@@ -18,6 +18,15 @@ class UserListViewController: UITableViewController {
         return indicator
     }()
 
+    private lazy var errorLabel: UILabel = {
+        let label = UILabel()
+        label.font = .preferredFont(forTextStyle: .callout)
+        label.textColor = .gray
+        label.text = "Could not load data"
+        label.isHidden = true
+        return label
+    }()
+
     // MARK: - Lifecycle
 
     init(
@@ -27,10 +36,20 @@ class UserListViewController: UITableViewController {
         self.viewModel = viewModel
         self.imageService = imageService
 
-        super.init(nibName: nil, bundle: nil)
+        let layout = UICollectionViewCompositionalLayout { _, environment in
+            let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0),
+                                                  heightDimension: .fractionalHeight(1.0))
+            let item = NSCollectionLayoutItem(layoutSize: itemSize)
+            let groupSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0),
+                                                   heightDimension: .absolute(44))
+            let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize,
+                                                           subitems: [item])
+            return NSCollectionLayoutSection(group: group)
+        }
 
-        tableView.prefetchDataSource = self
-        tableView.register(UserListItemCell.self, forCellReuseIdentifier: UserListItemCell.reuseIdentifier)
+        super.init(collectionViewLayout: layout)
+        collectionView.prefetchDataSource = self
+        collectionView.register(UserListItemCell.self, forCellWithReuseIdentifier: UserListItemCell.reuseIdentifier)
     }
 
     @available(*, unavailable)
@@ -42,47 +61,63 @@ class UserListViewController: UITableViewController {
         super.viewDidLoad()
 
         viewModel?.$loading.sink { [weak self] value in
-            if value == true {
+            if value == .loading && self?.items.isEmpty == true {
                 self?.loader.startAnimating()
             } else {
                 self?.loader.stopAnimating()
             }
+            self?.errorLabel.isHidden = value != .failed
         }.store(in: &subscriptions)
 
         viewModel?.$listItems.sink { [weak self] value in
             self?.items = value
-            self?.tableView.reloadData()
+            self?.collectionView.reloadData()
         }.store(in: &subscriptions)
 
         title = "GitHub Users"
 
-        loader.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(loader)
-
-        NSLayoutConstraint.activate([
-            loader.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            loader.centerYAnchor.constraint(equalTo: view.centerYAnchor)
-        ])
+        setupViews()
 
         viewModel?.viewDidLoad()
     }
+
+    // MARK: - Private
+
+    private func setupViews() {
+        loader.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(loader)
+        errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(errorLabel)
+
+        NSLayoutConstraint.activate([
+            loader.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            loader.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+
+            errorLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            errorLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
+    }
 }
 
-// MARK: - UITableViewDataSource
+// MARK: - UICollectionViewDataSource
 
 extension UserListViewController {
 
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+    override func numberOfSections(in collectionView: UICollectionView) -> Int {
+        1
+    }
+
+    override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         items.count
     }
 
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCell(
-            withIdentifier: UserListItemCell.reuseIdentifier,
+    override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        guard let cell = collectionView.dequeueReusableCell(
+            withReuseIdentifier: UserListItemCell.reuseIdentifier,
             for: indexPath
         ) as? UserListItemCell else {
             assertionFailure("Could not dequeue reusable cell withIdentifier UserItemCell, for: \(indexPath)")
-            return UITableViewCell()
+            return UICollectionViewCell()
         }
 
         cell.bind(
@@ -93,15 +128,16 @@ extension UserListViewController {
         return cell
     }
 
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+    override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         viewModel?.didSelect(item: indexPath.item)
     }
 }
 
 // MARK: - Prefetch
 
-extension UserListViewController: UITableViewDataSourcePrefetching {
-    func tableView(_ tableView: UITableView, prefetchRowsAt indexPaths: [IndexPath]) {
+extension UserListViewController: UICollectionViewDataSourcePrefetching {
+
+    func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
         if indexPaths.contains(where: isLoadingCell) {
             viewModel?.prefetch()
         }

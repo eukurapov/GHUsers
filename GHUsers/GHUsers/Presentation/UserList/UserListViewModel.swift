@@ -4,12 +4,20 @@ struct UserListActions {
     let selectUser: ((UserListItem) -> Void)?
 }
 
+enum Loading {
+    case loading, success, failed
+}
+
 final class UserListViewModel {
 
     // MARK: - Properties
 
     @Published var listItems: [UserListItemViewModel] = []
-    @Published var loading: Bool = false
+    @Published var loading: Loading = .success
+
+    private var isLoading: Bool {
+        loading == .loading
+    }
 
     private let fetchUsersUseCase: FetchUserListUseCase
     private let actions: UserListActions
@@ -34,7 +42,7 @@ final class UserListViewModel {
     }
 
     func prefetch() {
-        guard !loading else { return }
+        guard !isLoading else { return }
 
         fetchNext()
     }
@@ -48,7 +56,7 @@ final class UserListViewModel {
     // MARK: - Private
 
     func fetchNext() {
-        loading = true
+        loading = .loading
         let params = FetchUserListUseCaseParams(pageNumber: currentPage + 1)
         fetchUsersUseCase.fetch(params: params) { [weak self] result in
             switch result {
@@ -56,10 +64,10 @@ final class UserListViewModel {
                 self?.users.append(contentsOf: users)
                 self?.listItems.append(contentsOf: users.map(UserListItemViewModel.init))
                 self?.currentPage += 1
-            case let .failure(error):
-                print(error)
+                self?.loading = .success
+            case .failure(_):
+                self?.loading = .failed
             }
-            self?.loading = false
         }
     }
 }
