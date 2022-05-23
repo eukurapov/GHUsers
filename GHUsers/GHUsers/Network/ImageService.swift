@@ -9,19 +9,23 @@ class DefaultImageService: ImageService {
     // MARK: - Properties
 
     // quick solution for simple cache without persistance
-    private var cache: [URL: UIImage] = [:]
+    private var cache = NSCache<NSString, NSData>()
 
     // MARK: ImageService
 
     func fetch(url: URL, completion: ((UIImage?) -> Void)?) -> Cancellable? {
-        if let image = cache[url] {
+        if let imageData = cache.object(forKey: url.absoluteString as NSString),
+           let image = UIImage(data: imageData as Data) {
             completion?(image)
             return nil
         } else {
             let dataTask = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-                let image = data.flatMap { UIImage(data: $0) }
-                completion?(image ?? Constants.imagePlaceholder)
-                self?.cache[url] = image
+                guard let data = data, let image = UIImage(data: data) else {
+                    completion?(Constants.imagePlaceholder)
+                    return
+                }
+                completion?(image)
+                self?.cache.setObject(data as NSData, forKey: url.absoluteString as NSString)
             }
             dataTask.resume()
             return dataTask
